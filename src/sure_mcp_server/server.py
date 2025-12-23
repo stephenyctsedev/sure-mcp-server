@@ -34,7 +34,7 @@ def get_auth_header() -> Dict[str, str]:
     access_token = os.getenv("SURE_ACCESS_TOKEN")
 
     if api_key:
-        return {"Authorization": f"Bearer {api_key}"}
+        return {"X-Api-Key": api_key}
     elif access_token:
         return {"Authorization": f"Bearer {access_token}"}
     else:
