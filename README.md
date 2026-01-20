@@ -4,7 +4,50 @@ A Model Context Protocol (MCP) server for integrating with the [Sure](https://gi
 
 ## Quick Start
 
-### 1. Installation
+There are two ways to run the Sure MCP Server: **Docker (recommended)** or **manual installation**.
+
+### Option A: Docker Installation (Recommended)
+
+1. **Build the Docker image**:
+   ```bash
+   docker build -t sure-mcp-server .
+   ```
+
+2. **Configure Claude Desktop** to use Docker:
+
+   **macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
+
+   **Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
+
+   ```json
+   {
+     "mcpServers": {
+       "Sure": {
+         "command": "docker",
+         "args": [
+           "run",
+           "-i",
+           "--rm",
+           "-e", "SURE_API_URL",
+           "-e", "SURE_API_KEY",
+           "-e", "SURE_VERIFY_SSL=false",
+           "--add-host=host.docker.internal:host-gateway",
+           "sure-mcp-server"
+         ],
+         "env": {
+           "SURE_API_URL": "http://host.docker.internal:3000",
+           "SURE_API_KEY": "your-api-key-here"
+         }
+       }
+     }
+   }
+   ```
+
+   **Note**: Use `host.docker.internal` to connect to Sure running on your host machine.
+
+3. **Restart Claude Desktop**
+
+### Option B: Manual Installation
 
 1. **Clone this repository**:
    ```bash
@@ -53,14 +96,14 @@ A Model Context Protocol (MCP) server for integrating with the [Sure](https://gi
 
 4. **Restart Claude Desktop**
 
-### 2. Get Your Sure API Key
+### Get Your Sure API Key
 
 1. Start your Sure Docker instance: `docker compose up -d`
 2. Log into Sure at `http://localhost:3000`
 3. Go to **Settings > API Key** and generate a new key
 4. Copy the API key to your Claude Desktop config
 
-### 3. Start Using in Claude Desktop
+### Start Using in Claude Desktop
 
 Once configured, use these tools directly in Claude Desktop:
 - `get_accounts` - View all accounts
