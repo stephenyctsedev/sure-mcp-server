@@ -28,6 +28,9 @@ There are two ways to run the Sure MCP Server: **Docker (recommended)** or **man
            "run",
            "-i",
            "--rm",
+           "-e", "SURE_API_URL",
+           "-e", "SURE_API_KEY",
+           "-e", "SURE_VERIFY_SSL",
            "--add-host=host.docker.internal:host-gateway",
            "sure-mcp-server"
          ],
