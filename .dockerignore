@@ -53,6 +53,5 @@ docker-compose*.yml
 .dockerignore
 
 # Misc
-*.md
 LICENSE
 .env.example

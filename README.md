@@ -10,7 +10,7 @@ There are two ways to run the Sure MCP Server: **Docker (recommended)** or **man
 
 1. **Build the Docker image**:
    ```bash
-   docker build -t sure-mcp-server .
+   docker compose build
    ```
 
 2. **Configure Claude Desktop** to use Docker:
@@ -28,15 +28,13 @@ There are two ways to run the Sure MCP Server: **Docker (recommended)** or **man
            "run",
            "-i",
            "--rm",
-           "-e", "SURE_API_URL",
-           "-e", "SURE_API_KEY",
-           "-e", "SURE_VERIFY_SSL=false",
            "--add-host=host.docker.internal:host-gateway",
            "sure-mcp-server"
          ],
          "env": {
            "SURE_API_URL": "http://host.docker.internal:3000",
-           "SURE_API_KEY": "your-api-key-here"
+           "SURE_API_KEY": "your-api-key-here",
+           "SURE_VERIFY_SSL": "false"
          }
        }
      }
