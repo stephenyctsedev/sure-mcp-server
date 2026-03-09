@@ -30,6 +30,10 @@ ENV SURE_API_URL=""
 ENV SURE_API_KEY=""
 ENV SURE_TIMEOUT="30"
 ENV SURE_VERIFY_SSL="true"
+ENV MCP_HOST="0.0.0.0"
+ENV MCP_PORT="8765"
 
-# Run the MCP server using stdio transport
+EXPOSE 8765
+
+# Run the MCP server using SSE transport
 CMD ["python", "-m", "sure_mcp_server.server"]

@@ -3,10 +3,12 @@
 import os
 import logging
 import json
+from contextvars import ContextVar
 from typing import Any, Dict, List, Optional
 
 from dotenv import load_dotenv
 from mcp.server.fastmcp import FastMCP
+from starlette.responses import JSONResponse as StarletteJSONResponse
 import httpx
 
 # Configure logging
@@ -19,6 +21,70 @@ load_dotenv()
 # Initialize FastMCP server
 mcp = FastMCP("Sure MCP Server")
 
+# Per-request API key (set by AuthMiddleware from OAuth Bearer token or X-Sure-Api-Key header)
+_api_key_var: ContextVar[str | None] = ContextVar("api_key", default=None)
+
+
+class AuthMiddleware:
+    """Pure ASGI middleware: authenticate via Bearer token (OAuth), X-Sure-Api-Key header, or env var.
+
+    Uses pure ASGI (not BaseHTTPMiddleware) to avoid the streaming/SSE incompatibility in Starlette.
+    """
+
+    _OPEN_PREFIXES = ("/.well-known/",)
+    _OPEN_PATHS = frozenset(["/authorize", "/token"])
+
+    def __init__(self, app, auth_db) -> None:
+        self.app = app
+        self.auth_db = auth_db
+
+    async def __call__(self, scope, receive, send) -> None:
+        if scope["type"] not in ("http", "websocket"):
+            await self.app(scope, receive, send)
+            return
+
+        path: str = scope.get("path", "")
+        if path in self._OPEN_PATHS or any(path.startswith(p) for p in self._OPEN_PREFIXES):
+            await self.app(scope, receive, send)
+            return
+
+        headers = {k.lower(): v for k, v in scope.get("headers", [])}
+        api_key: str | None = None
+
+        # 1. OAuth Bearer token
+        auth_header = headers.get(b"authorization", b"").decode()
+        if auth_header.startswith("Bearer "):
+            api_key = self.auth_db.get_api_key_for_token(auth_header[7:])
+
+        # 2. X-Sure-Api-Key header (Claude Desktop)
+        if not api_key:
+            raw = headers.get(b"x-sure-api-key", b"")
+            api_key = raw.decode() if raw else None
+
+        # 3. Env var fallback (local/stdio mode)
+        if not api_key:
+            api_key = os.getenv("SURE_API_KEY")
+
+        if not api_key:
+            response = StarletteJSONResponse(
+                {
+                    "error": (
+                        "Authentication required. "
+                        "Claude.ai web: connect via the custom connector URL (OAuth). "
+                        "Claude Desktop: add X-Sure-Api-Key to your MCP config headers."
+                    )
+                },
+                status_code=403,
+            )
+            await response(scope, receive, send)
+            return
+
+        token = _api_key_var.set(api_key)
+        try:
+            await self.app(scope, receive, send)
+        finally:
+            _api_key_var.reset(token)
+
 
 def get_api_url() -> str:
     """Get the Sure API base URL."""
@@ -29,8 +95,8 @@ def get_api_url() -> str:
 
 
 def get_auth_header() -> Dict[str, str]:
-    """Get authentication header for API requests."""
-    api_key = os.getenv("SURE_API_KEY")
+    """Get authentication header. Reads ContextVar (SSE mode) then env var (local mode)."""
+    api_key = _api_key_var.get() or os.getenv("SURE_API_KEY")
     access_token = os.getenv("SURE_ACCESS_TOKEN")
 
     if api_key:
@@ -38,7 +104,12 @@ def get_auth_header() -> Dict[str, str]:
     elif access_token:
         return {"Authorization": f"Bearer {access_token}"}
     else:
-        raise RuntimeError("❌ No authentication configured. Set SURE_API_KEY or SURE_ACCESS_TOKEN.")
+        raise RuntimeError(
+            "❌ No authentication configured. "
+            "Claude.ai web: use OAuth (add the connector URL). "
+            "Claude Desktop: add X-Sure-Api-Key to your MCP config headers. "
+            "Local mode: set SURE_API_KEY in your environment."
+        )
 
 
 def get_client() -> httpx.Client:
@@ -77,27 +148,50 @@ def setup_authentication() -> str:
     """Get instructions for setting up authentication with Sure."""
     return """🔐 Sure MCP Server - Setup Instructions
 
-1️⃣ Start your Sure Docker instance:
-   cd /path/to/sure
-   docker compose up -d
+━━━ Claude.ai Web (OAuth) ━━━
 
-2️⃣ Log into Sure at http://localhost:3000
+1️⃣ Get your Sure API key:
+   • Log into Sure → Settings → API Key → Generate
 
-3️⃣ Go to Settings > API Key and generate a new key
+2️⃣ In Claude.ai, go to Settings → Connectors → Add custom connector
+   • Name: Sure Finance
+   • URL: https://<your-server>/sse
+   • Click Add — you'll be redirected to a login page
 
-4️⃣ Add to your Claude Desktop config:
-   "env": {
-     "SURE_API_URL": "http://localhost:3000",
-     "SURE_API_KEY": "your-api-key-here"
+3️⃣ Enter your Sure API key in the browser form
+
+4️⃣ Done — each user authenticates with their own key
+
+━━━ Claude Desktop (header) ━━━
+
+Add to your Claude Desktop config:
+   "mcpServers": {
+     "Sure": {
+       "url": "https://<your-server>/sse",
+       "headers": {
+         "X-Sure-Api-Key": "your-personal-api-key"
+       }
+     }
    }
 
-5️⃣ Restart Claude Desktop
+━━━ Local Docker (single user) ━━━
 
-✅ Start using Sure tools:
-   • get_accounts - View all accounts
-   • get_transactions - Recent transactions
-   • get_categories - Transaction categories
-   • sync_accounts - Trigger account sync"""
+   "mcpServers": {
+     "Sure": {
+       "command": "docker",
+       "args": ["run", "-i", "--rm",
+                "-e", "SURE_API_URL", "-e", "SURE_API_KEY",
+                "--add-host=host.docker.internal:host-gateway",
+                "sure-mcp-server"],
+       "env": {
+         "SURE_API_URL": "http://host.docker.internal:3000",
+         "SURE_API_KEY": "your-api-key-here",
+         "SURE_VERIFY_SSL": "false"
+       }
+     }
+   }
+
+✅ Test connection with: check_connection"""
 
 
 @mcp.tool()
@@ -528,12 +622,49 @@ def delete_chat(chat_id: str) -> str:
 
 def main():
     """Main entry point for the server."""
-    logger.info("Starting Sure MCP Server...")
-    try:
-        mcp.run()
-    except Exception as e:
-        logger.error(f"Failed to run server: {str(e)}")
-        raise
+    import uvicorn
+    from starlette.applications import Starlette
+    from starlette.routing import Mount
+    from sure_mcp_server.auth_db import AuthDB
+    from sure_mcp_server.oauth_routes import make_oauth_routes
+
+    host = os.getenv("MCP_HOST", "0.0.0.0")
+    port = int(os.getenv("MCP_PORT", "8765"))
+    base_url = os.getenv("MCP_BASE_URL", f"http://localhost:{port}").rstrip("/")
+
+    logger.info(f"Starting Sure MCP Server (SSE) on {host}:{port}...")
+    logger.info(f"OAuth base URL: {base_url}")
+
+    # Initialise SQLite auth store
+    auth_db = AuthDB()
+    auth_db.initialize()
+
+    # Build combined app: OAuth routes + FastMCP SSE app under /
+    oauth_routes = make_oauth_routes(auth_db, base_url)
+    sse = mcp.sse_app()
+
+    # MCP transport security validates the Host header against the bind address.
+    # Behind a reverse proxy the Host header is the external domain, which fails.
+    # Normalise it to localhost:port before the MCP SSE app sees it.
+    internal_host = f"localhost:{port}".encode()
+
+    class _HostNormalizerMiddleware:
+        def __init__(self, app):
+            self.app = app
+
+        async def __call__(self, scope, receive, send):
+            if scope["type"] in ("http", "websocket"):
+                scope["headers"] = [
+                    (b"host", internal_host) if k.lower() == b"host" else (k, v)
+                    for k, v in scope["headers"]
+                ]
+            await self.app(scope, receive, send)
+
+    inner = Starlette(routes=oauth_routes + [Mount("/", app=_HostNormalizerMiddleware(sse))])
+    # Wrap with pure ASGI middleware — BaseHTTPMiddleware breaks SSE streaming
+    app_with_auth = AuthMiddleware(inner, auth_db=auth_db)
+
+    uvicorn.run(app_with_auth, host=host, port=port)
 
 
 # Export for mcp run

@@ -3,13 +3,20 @@ services:
     build: .
     image: sure-mcp-server:latest
     container_name: sure-mcp-server
-    stdin_open: true
-    tty: true
+    ports:
+      - "8765:8765"
     environment:
       - SURE_API_URL=${SURE_API_URL:-http://host.docker.internal:3000}
-      - SURE_API_KEY=${SURE_API_KEY}
       - SURE_TIMEOUT=${SURE_TIMEOUT:-30}
       - SURE_VERIFY_SSL=${SURE_VERIFY_SSL:-false}
+      - MCP_HOST=0.0.0.0
+      - MCP_PORT=8765
+      - MCP_BASE_URL=${MCP_BASE_URL:-http://localhost:8765}
+    volumes:
+      - sure-mcp-data:/app/data
     extra_hosts:
       - "host.docker.internal:host-gateway"
     restart: unless-stopped
+
+volumes:
+  sure-mcp-data:
