@@ -34,9 +34,10 @@ class AuthMiddleware:
     _OPEN_PREFIXES = ("/.well-known/",)
     _OPEN_PATHS = frozenset(["/authorize", "/token"])
 
-    def __init__(self, app, auth_db) -> None:
+    def __init__(self, app, auth_db, base_url: str = "") -> None:
         self.app = app
         self.auth_db = auth_db
+        self.base_url = base_url
 
     async def __call__(self, scope, receive, send) -> None:
         if scope["type"] not in ("http", "websocket"):
@@ -66,15 +67,13 @@ class AuthMiddleware:
             api_key = os.getenv("SURE_API_KEY")
 
         if not api_key:
+            resource_metadata_url = f"{self.base_url}/.well-known/oauth-protected-resource"
             response = StarletteJSONResponse(
-                {
-                    "error": (
-                        "Authentication required. "
-                        "Claude.ai web: connect via the custom connector URL (OAuth). "
-                        "Claude Desktop: add X-Sure-Api-Key to your MCP config headers."
-                    )
+                {"error": "unauthorized"},
+                status_code=401,
+                headers={
+                    "WWW-Authenticate": f'Bearer realm="{self.base_url}", resource_metadata="{resource_metadata_url}"'
                 },
-                status_code=403,
             )
             await response(scope, receive, send)
             return
@@ -695,7 +694,7 @@ def main():
 
     inner = Starlette(routes=oauth_routes + [Mount("/", app=_HostNormalizerMiddleware(sse))])
     # Wrap with pure ASGI middleware — BaseHTTPMiddleware breaks SSE streaming
-    app_with_auth = AuthMiddleware(inner, auth_db=auth_db)
+    app_with_auth = AuthMiddleware(inner, auth_db=auth_db, base_url=base_url)
 
     uvicorn.run(app_with_auth, host=host, port=port)
 

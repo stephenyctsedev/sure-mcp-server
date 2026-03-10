@@ -45,6 +45,8 @@ def make_oauth_routes(auth_db: AuthDB, base_url: str) -> list:
     return [
         Route("/.well-known/oauth-authorization-server", discovery),
         Route("/.well-known/oauth-protected-resource", protected_resource_metadata),
+        # Handle resource-specific metadata (e.g. /.well-known/oauth-protected-resource/sse)
+        Route("/.well-known/oauth-protected-resource/{path:path}", protected_resource_metadata),
         Route("/authorize", authorize, methods=["GET", "POST"]),
         Route("/token", token, methods=["POST"]),
     ]
