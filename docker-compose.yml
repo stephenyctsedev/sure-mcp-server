@@ -1,7 +1,6 @@
 services:
   sure-mcp-server:
-    build: .
-    image: sure-mcp-server:latest
+    image: ghcr.io/stephenyctsedev/sure-mcp-server:latest
     container_name: sure-mcp-server
     ports:
       - "8765:8765"
