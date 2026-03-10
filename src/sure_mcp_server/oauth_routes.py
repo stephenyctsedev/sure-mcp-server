@@ -1,5 +1,6 @@
 """OAuth 2.0 Authorization Code routes for Claude.ai web connector support."""
 import html
+import secrets
 from starlette.requests import Request
 from starlette.responses import HTMLResponse, JSONResponse, RedirectResponse
 from starlette.routing import Route
@@ -14,8 +15,11 @@ def make_oauth_routes(auth_db: AuthDB, base_url: str) -> list:
             "issuer": base_url,
             "authorization_endpoint": f"{base_url}/authorize",
             "token_endpoint": f"{base_url}/token",
+            "registration_endpoint": f"{base_url}/register",
             "response_types_supported": ["code"],
+            "grant_types_supported": ["authorization_code"],
             "code_challenge_methods_supported": ["S256"],
+            "token_endpoint_auth_methods_supported": ["none"],
         })
 
     async def protected_resource_metadata(request: Request) -> JSONResponse:
@@ -30,6 +34,22 @@ def make_oauth_routes(auth_db: AuthDB, base_url: str) -> list:
         if request.method == "GET":
             return _authorize_form(request)
         return await _authorize_submit(request, auth_db)
+
+    async def register(request: Request) -> JSONResponse:
+        """RFC 7591 Dynamic Client Registration — accept any client, return a client_id."""
+        try:
+            body = await request.json() if request.headers.get("content-type", "").startswith("application/json") else {}
+        except Exception:
+            body = {}
+        client_id = secrets.token_hex(16)
+        redirect_uris = body.get("redirect_uris", [])
+        return JSONResponse({
+            "client_id": client_id,
+            "redirect_uris": redirect_uris,
+            "grant_types": ["authorization_code"],
+            "response_types": ["code"],
+            "token_endpoint_auth_method": "none",
+        }, status_code=201)
 
     async def token(request: Request) -> JSONResponse:
         form = await request.form()
@@ -47,6 +67,7 @@ def make_oauth_routes(auth_db: AuthDB, base_url: str) -> list:
         Route("/.well-known/oauth-protected-resource", protected_resource_metadata),
         # Handle resource-specific metadata (e.g. /.well-known/oauth-protected-resource/sse)
         Route("/.well-known/oauth-protected-resource/{path:path}", protected_resource_metadata),
+        Route("/register", register, methods=["POST"]),
         Route("/authorize", authorize, methods=["GET", "POST"]),
         Route("/token", token, methods=["POST"]),
     ]

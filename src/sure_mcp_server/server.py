@@ -32,7 +32,7 @@ class AuthMiddleware:
     """
 
     _OPEN_PREFIXES = ("/.well-known/",)
-    _OPEN_PATHS = frozenset(["/authorize", "/token"])
+    _OPEN_PATHS = frozenset(["/authorize", "/token", "/register"])
 
     def __init__(self, app, auth_db, base_url: str = "") -> None:
         self.app = app
