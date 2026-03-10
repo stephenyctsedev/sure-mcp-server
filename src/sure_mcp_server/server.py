@@ -446,6 +446,39 @@ def delete_transaction(transaction_id: str) -> str:
 
 
 @mcp.tool()
+def link_transfer(transaction_id: str, other_transaction_id: str) -> str:
+    """
+    Link two transactions as a transfer between accounts in Sure.
+
+    This marks one transaction as the inflow and the other as the outflow of a
+    single transfer event. The API automatically assigns direction.
+
+    Args:
+        transaction_id: The ID of the first transaction
+        other_transaction_id: The ID of the second transaction to link as a transfer pair
+
+    Business rules:
+        - Both transactions must belong to different accounts within the same family
+        - They must have opposite-sign amounts (one positive, one negative)
+        - They must be dated within 30 days of each other
+        - Each transaction can only be linked to one transfer at a time
+    """
+    try:
+        with get_client() as client:
+            response = client.patch(
+                f"/api/v1/transactions/{transaction_id}/transfer",
+                json={"transfer": {"other_transaction_id": other_transaction_id}}
+            )
+            data = handle_response(response)
+
+            logger.info(f"✅ Linked transfer between {transaction_id} and {other_transaction_id}")
+            return json.dumps(data, indent=2, default=str)
+    except Exception as e:
+        logger.error(f"Failed to link transfer: {e}")
+        return f"Error linking transfer: {str(e)}"
+
+
+@mcp.tool()
 def get_categories() -> str:
     """Get all transaction categories from Sure."""
     try:
