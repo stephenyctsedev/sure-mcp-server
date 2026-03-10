@@ -72,7 +72,7 @@ class AuthMiddleware:
                 {"error": "unauthorized"},
                 status_code=401,
                 headers={
-                    "WWW-Authenticate": f'Bearer realm="{self.base_url}", resource_metadata="{resource_metadata_url}"'
+                    "WWW-Authenticate": f'Bearer resource_metadata="{resource_metadata_url}"'
                 },
             )
             await response(scope, receive, send)
