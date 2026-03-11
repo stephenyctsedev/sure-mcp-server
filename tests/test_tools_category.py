@@ -25,7 +25,7 @@ def make_mock_client(status_code: int, json_body: dict) -> mock.MagicMock:
 # ---------------------------------------------------------------------------
 
 class TestCreateCategory:
-    def test_create_category_required_fields_only(self, monkeypatch):
+    def test_create_category_required_fields_only(self):
         """Should POST to /api/v1/categories with name + classification only."""
         from sure_mcp_server.server import create_category
 
@@ -41,7 +41,7 @@ class TestCreateCategory:
         )
         assert json.loads(result) == {"category": expected_data}
 
-    def test_create_category_all_optional_fields(self, monkeypatch):
+    def test_create_category_all_optional_fields(self):
         """Should include color, icon, parent_id in payload when provided."""
         from sure_mcp_server.server import create_category
 
@@ -78,7 +78,7 @@ class TestCreateCategory:
         )
         assert json.loads(result) == {"category": expected_data}
 
-    def test_create_category_omits_none_optional_fields(self, monkeypatch):
+    def test_create_category_omits_none_optional_fields(self):
         """Optional fields that are None should NOT appear in the payload."""
         from sure_mcp_server.server import create_category
 
@@ -93,7 +93,7 @@ class TestCreateCategory:
         assert "icon" not in payload
         assert "parent_id" not in payload
 
-    def test_create_category_api_error_returns_error_string(self, monkeypatch):
+    def test_create_category_api_error_returns_error_string(self):
         """Should return an error string (not raise) on API failure."""
         from sure_mcp_server.server import create_category
 
@@ -105,3 +105,11 @@ class TestCreateCategory:
             result = create_category(name="Bad", classification="expense")
 
         assert result.startswith("Error creating category:")
+
+    def test_create_category_invalid_classification_returns_error(self):
+        """Should return error immediately for invalid classification without API call."""
+        from sure_mcp_server.server import create_category
+
+        result = create_category(name="Test", classification="invalid")
+
+        assert result == "Error creating category: classification must be 'income' or 'expense'"

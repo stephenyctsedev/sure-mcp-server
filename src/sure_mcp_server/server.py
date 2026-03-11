@@ -535,6 +535,9 @@ def create_category(
         parent_id: Optional parent category ID for nesting
     """
     try:
+        if classification not in ("income", "expense"):
+            return "Error creating category: classification must be 'income' or 'expense'"
+
         with get_client() as client:
             payload: Dict[str, Any] = {
                 "name": name,
