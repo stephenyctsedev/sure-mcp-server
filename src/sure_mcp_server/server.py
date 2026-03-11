@@ -517,6 +517,105 @@ def get_category(category_id: str) -> str:
 
 
 @mcp.tool()
+def create_category(
+    name: str,
+    classification: str,
+    color: Optional[str] = None,
+    icon: Optional[str] = None,
+    parent_id: Optional[str] = None,
+) -> str:
+    """
+    Create a new category in Sure.
+
+    Args:
+        name: Category name
+        classification: "income" or "expense"
+        color: Optional color string (e.g. hex code like "#ff0000")
+        icon: Optional icon identifier
+        parent_id: Optional parent category ID for nesting
+    """
+    try:
+        if classification not in ("income", "expense"):
+            return "Error creating category: classification must be 'income' or 'expense'"
+
+        with get_client() as client:
+            payload: Dict[str, Any] = {
+                "name": name,
+                "classification": classification,
+            }
+
+            if color is not None:
+                payload["color"] = color
+            if icon is not None:
+                payload["icon"] = icon
+            if parent_id is not None:
+                payload["parent_id"] = parent_id
+
+            response = client.post(
+                "/api/v1/categories",
+                json={"category": payload}
+            )
+            data = handle_response(response)
+
+            logger.info(f"✅ Created category '{name}'")
+            return json.dumps(data, indent=2, default=str)
+    except Exception as e:
+        logger.error(f"Failed to create category: {e}")
+        return f"Error creating category: {str(e)}"
+
+
+@mcp.tool()
+def update_category(
+    category_id: str,
+    name: Optional[str] = None,
+    classification: Optional[str] = None,
+    color: Optional[str] = None,
+    icon: Optional[str] = None,
+    parent_id: Optional[str] = None,
+) -> str:
+    """
+    Update an existing category in Sure.
+
+    Args:
+        category_id: The ID of the category to update
+        name: New category name
+        classification: New classification ("income" or "expense")
+        color: New color string (e.g. hex code like "#ff0000")
+        icon: New icon identifier
+        parent_id: New parent category ID for nesting
+    """
+    try:
+        if classification is not None and classification not in ("income", "expense"):
+            return "Error updating category: classification must be 'income' or 'expense'"
+
+        with get_client() as client:
+            payload: Dict[str, Any] = {}
+
+            if name is not None:
+                payload["name"] = name
+            if classification is not None:
+                payload["classification"] = classification
+            if color is not None:
+                payload["color"] = color
+            if icon is not None:
+                payload["icon"] = icon
+            if parent_id is not None:
+                payload["parent_id"] = parent_id
+
+            response = client.patch(
+                f"/api/v1/categories/{category_id}",
+                json={"category": payload}
+            )
+            data = handle_response(response)
+
+            logger.info(f"✅ Updated category {category_id}")
+            return json.dumps(data, indent=2, default=str)
+    except Exception as e:
+        logger.error(f"Failed to update category: {e}")
+        return f"Error updating category: {str(e)}"
+
+
+@mcp.tool()
 def sync_accounts() -> str:
     """Trigger account sync to refresh data from financial institutions."""
     try:
