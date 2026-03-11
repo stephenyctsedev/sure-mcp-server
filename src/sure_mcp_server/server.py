@@ -585,6 +585,9 @@ def update_category(
         parent_id: New parent category ID for nesting
     """
     try:
+        if classification is not None and classification not in ("income", "expense"):
+            return "Error updating category: classification must be 'income' or 'expense'"
+
         with get_client() as client:
             payload: Dict[str, Any] = {}
 

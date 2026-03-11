@@ -162,6 +162,7 @@ class TestUpdateCategory:
             "icon": "star",
             "parent_id": "cat-0",
         }
+        assert json.loads(result) == {"category": expected_data}
 
     def test_update_category_omits_none_fields(self):
         """None optional fields must not appear in the PATCH payload."""
@@ -202,3 +203,11 @@ class TestUpdateCategory:
             result = update_category(category_id="nonexistent")
 
         assert result.startswith("Error updating category:")
+
+    def test_update_category_invalid_classification_returns_error(self):
+        """Should return error immediately for invalid classification without API call."""
+        from sure_mcp_server.server import update_category
+
+        result = update_category(category_id="cat-1", classification="bad")
+
+        assert result == "Error updating category: classification must be 'income' or 'expense'"
