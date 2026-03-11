@@ -198,6 +198,7 @@ def check_auth_status() -> str:
     """Check if authentication is configured for Sure API."""
     try:
         api_url = os.getenv("SURE_API_URL")
+        oauth_key = _api_key_var.get()
         api_key = os.getenv("SURE_API_KEY")
         access_token = os.getenv("SURE_ACCESS_TOKEN")
 
@@ -208,7 +209,9 @@ def check_auth_status() -> str:
         else:
             status += "❌ SURE_API_URL not configured\n"
 
-        if api_key:
+        if oauth_key:
+            status += "✅ API Key configured (OAuth session)\n"
+        elif api_key:
             status += "✅ API Key configured\n"
         elif access_token:
             status += "✅ Access Token configured\n"
