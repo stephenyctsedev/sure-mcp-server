@@ -113,3 +113,92 @@ class TestCreateCategory:
         result = create_category(name="Test", classification="invalid")
 
         assert result == "Error creating category: classification must be 'income' or 'expense'"
+
+
+# ---------------------------------------------------------------------------
+# update_category
+# ---------------------------------------------------------------------------
+
+class TestUpdateCategory:
+    def test_update_category_single_field(self):
+        """Should PATCH /api/v1/categories/{id} with only the changed field."""
+        from sure_mcp_server.server import update_category
+
+        expected_data = {"id": "cat-1", "name": "Renamed"}
+        mock_client = make_mock_client(200, {"category": expected_data})
+
+        with mock.patch("sure_mcp_server.server.get_client", return_value=mock_client):
+            result = update_category(category_id="cat-1", name="Renamed")
+
+        mock_client.patch.assert_called_once_with(
+            "/api/v1/categories/cat-1",
+            json={"category": {"name": "Renamed"}},
+        )
+        assert json.loads(result) == {"category": expected_data}
+
+    def test_update_category_all_fields(self):
+        """Should PATCH with all provided fields."""
+        from sure_mcp_server.server import update_category
+
+        expected_data = {"id": "cat-1", "name": "Updated"}
+        mock_client = make_mock_client(200, {"category": expected_data})
+
+        with mock.patch("sure_mcp_server.server.get_client", return_value=mock_client):
+            result = update_category(
+                category_id="cat-1",
+                name="Updated",
+                classification="income",
+                color="#00ff00",
+                icon="star",
+                parent_id="cat-0",
+            )
+
+        call_kwargs = mock_client.patch.call_args
+        payload = call_kwargs.kwargs["json"]["category"]
+        assert payload == {
+            "name": "Updated",
+            "classification": "income",
+            "color": "#00ff00",
+            "icon": "star",
+            "parent_id": "cat-0",
+        }
+
+    def test_update_category_omits_none_fields(self):
+        """None optional fields must not appear in the PATCH payload."""
+        from sure_mcp_server.server import update_category
+
+        mock_client = make_mock_client(200, {"id": "cat-1"})
+
+        with mock.patch("sure_mcp_server.server.get_client", return_value=mock_client):
+            update_category(category_id="cat-1", name="Only Name")
+
+        payload = mock_client.patch.call_args.kwargs["json"]["category"]
+        assert "classification" not in payload
+        assert "color" not in payload
+        assert "icon" not in payload
+        assert "parent_id" not in payload
+
+    def test_update_category_no_optional_fields_sends_empty_payload(self):
+        """Calling with only category_id should PATCH with empty category dict."""
+        from sure_mcp_server.server import update_category
+
+        mock_client = make_mock_client(200, {"id": "cat-1"})
+
+        with mock.patch("sure_mcp_server.server.get_client", return_value=mock_client):
+            update_category(category_id="cat-1")
+
+        payload = mock_client.patch.call_args.kwargs["json"]["category"]
+        assert payload == {}
+
+    def test_update_category_api_error_returns_error_string(self):
+        """Should return an error string (not raise) on API failure."""
+        from sure_mcp_server.server import update_category
+
+        mock_client = make_mock_client(404, {})
+        mock_client.patch.return_value.status_code = 404
+        mock_client.patch.return_value.text = "Not Found"
+
+        with mock.patch("sure_mcp_server.server.get_client", return_value=mock_client):
+            result = update_category(category_id="nonexistent")
+
+        assert result.startswith("Error updating category:")
