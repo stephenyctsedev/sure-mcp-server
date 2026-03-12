@@ -264,3 +264,69 @@ class TestDeleteCategory:
             delete_category(category_id="cat-99")
 
         mock_client.delete.assert_called_once_with("/api/v1/categories/cat-99")
+
+
+# ---------------------------------------------------------------------------
+# get_category_icons
+# ---------------------------------------------------------------------------
+
+class TestGetCategoryIcons:
+    def test_get_category_icons_returns_icons_array(self):
+        """Should GET /api/v1/categories/icons and return the icons list."""
+        from sure_mcp_server.server import get_category_icons
+
+        icons = ["ambulance", "apple", "award"]
+        mock_response = mock.MagicMock()
+        mock_response.status_code = 200
+        mock_response.headers = {"content-type": "application/json"}
+        mock_response.json.return_value = {"icons": icons}
+
+        mock_client = mock.MagicMock()
+        mock_client.__enter__ = mock.Mock(return_value=mock_client)
+        mock_client.__exit__ = mock.Mock(return_value=False)
+        mock_client.get.return_value = mock_response
+
+        with mock.patch("sure_mcp_server.server.get_client", return_value=mock_client):
+            result = get_category_icons()
+
+        mock_client.get.assert_called_once_with("/api/v1/categories/icons")
+        assert json.loads(result) == icons
+
+    def test_get_category_icons_fallback_when_no_icons_key(self):
+        """Should fall back to data.get('data') or data itself when 'icons' key absent."""
+        from sure_mcp_server.server import get_category_icons
+
+        icons = ["star", "home"]
+        mock_response = mock.MagicMock()
+        mock_response.status_code = 200
+        mock_response.headers = {"content-type": "application/json"}
+        mock_response.json.return_value = {"data": icons}
+
+        mock_client = mock.MagicMock()
+        mock_client.__enter__ = mock.Mock(return_value=mock_client)
+        mock_client.__exit__ = mock.Mock(return_value=False)
+        mock_client.get.return_value = mock_response
+
+        with mock.patch("sure_mcp_server.server.get_client", return_value=mock_client):
+            result = get_category_icons()
+
+        assert json.loads(result) == icons
+
+    def test_get_category_icons_api_error_returns_error_string(self):
+        """Should return an error string (not raise) on API failure."""
+        from sure_mcp_server.server import get_category_icons
+
+        mock_response = mock.MagicMock()
+        mock_response.status_code = 500
+        mock_response.headers = {"content-type": "application/json"}
+        mock_response.text = "Internal Server Error"
+
+        mock_client = mock.MagicMock()
+        mock_client.__enter__ = mock.Mock(return_value=mock_client)
+        mock_client.__exit__ = mock.Mock(return_value=False)
+        mock_client.get.return_value = mock_response
+
+        with mock.patch("sure_mcp_server.server.get_client", return_value=mock_client):
+            result = get_category_icons()
+
+        assert result.startswith("Error getting category icons:")

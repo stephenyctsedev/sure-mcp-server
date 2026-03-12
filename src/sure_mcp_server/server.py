@@ -639,6 +639,23 @@ def delete_category(category_id: str) -> str:
 
 
 @mcp.tool()
+def get_category_icons() -> str:
+    """Get all available icon identifiers that can be used when creating or updating a category."""
+    try:
+        with get_client() as client:
+            response = client.get("/api/v1/categories/icons")
+            data = handle_response(response)
+
+            icons = data.get("icons") or data.get("data") or data
+
+            logger.info(f"✅ Retrieved {len(icons) if isinstance(icons, list) else 'unknown'} icons")
+            return json.dumps(icons, indent=2, default=str)
+    except Exception as e:
+        logger.error(f"Failed to get category icons: {e}")
+        return f"Error getting category icons: {str(e)}"
+
+
+@mcp.tool()
 def sync_accounts() -> str:
     """Trigger account sync to refresh data from financial institutions."""
     try:
