@@ -17,3 +17,6 @@ htmlcov/
 # AI agent artifacts
 .agents/
 .claude/
+
+# Git worktrees
+.worktrees/
