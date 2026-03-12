@@ -619,6 +619,26 @@ def update_category(
 
 
 @mcp.tool()
+def delete_category(category_id: str) -> str:
+    """
+    Delete a category from Sure.
+
+    Args:
+        category_id: The ID of the category to delete
+    """
+    try:
+        with get_client() as client:
+            response = client.delete(f"/api/v1/categories/{category_id}")
+            data = handle_response(response)
+
+            logger.info(f"✅ Deleted category {category_id}")
+            return json.dumps(data, indent=2, default=str)
+    except Exception as e:
+        logger.error(f"Failed to delete category: {e}")
+        return f"Error deleting category: {str(e)}"
+
+
+@mcp.tool()
 def sync_accounts() -> str:
     """Trigger account sync to refresh data from financial institutions."""
     try:
