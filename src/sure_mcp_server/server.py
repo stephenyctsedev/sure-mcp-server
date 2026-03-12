@@ -646,7 +646,12 @@ def get_category_icons() -> str:
             response = client.get("/api/v1/categories/icons")
             data = handle_response(response)
 
-            icons = data.get("icons") or data.get("data") or data
+            if isinstance(data, list):
+                icons = data
+            else:
+                icons = data.get("icons") or data.get("data") or data
+                if isinstance(icons, dict):
+                    icons = icons.get("icons", [])
 
             logger.info(f"✅ Retrieved {len(icons) if isinstance(icons, list) else 'unknown'} icons")
             return json.dumps(icons, indent=2, default=str)
