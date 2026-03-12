@@ -1,4 +1,28 @@
-"""Tests for create_category, update_category, and delete_category MCP tools."""
+# create_category + update_category Implementation Plan
+
+> **For agentic workers:** REQUIRED: Use superpowers:subagent-driven-development (if subagents available) or superpowers:executing-plans to implement this plan. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** Add `create_category` and `update_category` MCP tools to the Sure MCP server.
+
+**Architecture:** Both tools follow the POST/PATCH with wrapped JSON payload pattern used by `create_transaction` and `update_transaction`. Optional-field guards use `is not None` (matching `update_transaction`'s style — not `create_transaction`'s truthiness guards, which would silently drop empty strings). Tools are inserted in `server.py` after `get_category` (line 516), before `sync_accounts` (line 519), to keep category tools grouped. Tests are written first (TDD) in a new file `tests/test_tools_category.py`.
+
+**Tech Stack:** Python 3.12, FastMCP, httpx, pytest, pytest-mock, unittest.mock
+
+---
+
+## Chunk 1: create_category (TDD)
+
+### Task 1: Write failing tests for create_category
+
+**Files:**
+- Create: `tests/test_tools_category.py`
+
+- [ ] **Step 1: Create the test file with tests for create_category**
+
+Create `tests/test_tools_category.py`:
+
+```python
+"""Tests for create_category and update_category MCP tools."""
 import json
 import unittest.mock as mock
 
@@ -17,7 +41,6 @@ def make_mock_client(status_code: int, json_body: dict) -> mock.MagicMock:
     mock_client.__exit__ = mock.Mock(return_value=False)
     mock_client.post.return_value = mock_response
     mock_client.patch.return_value = mock_response
-    mock_client.delete.return_value = mock_response
     return mock_client
 
 
@@ -26,7 +49,7 @@ def make_mock_client(status_code: int, json_body: dict) -> mock.MagicMock:
 # ---------------------------------------------------------------------------
 
 class TestCreateCategory:
-    def test_create_category_required_fields_only(self):
+    def test_create_category_required_fields_only(self, monkeypatch):
         """Should POST to /api/v1/categories with name + classification only."""
         from sure_mcp_server.server import create_category
 
@@ -42,7 +65,7 @@ class TestCreateCategory:
         )
         assert json.loads(result) == {"category": expected_data}
 
-    def test_create_category_all_optional_fields(self):
+    def test_create_category_all_optional_fields(self, monkeypatch):
         """Should include color, icon, parent_id in payload when provided."""
         from sure_mcp_server.server import create_category
 
@@ -79,7 +102,7 @@ class TestCreateCategory:
         )
         assert json.loads(result) == {"category": expected_data}
 
-    def test_create_category_omits_none_optional_fields(self):
+    def test_create_category_omits_none_optional_fields(self, monkeypatch):
         """Optional fields that are None should NOT appear in the payload."""
         from sure_mcp_server.server import create_category
 
@@ -94,7 +117,7 @@ class TestCreateCategory:
         assert "icon" not in payload
         assert "parent_id" not in payload
 
-    def test_create_category_api_error_returns_error_string(self):
+    def test_create_category_api_error_returns_error_string(self, monkeypatch):
         """Should return an error string (not raise) on API failure."""
         from sure_mcp_server.server import create_category
 
@@ -106,22 +129,108 @@ class TestCreateCategory:
             result = create_category(name="Bad", classification="expense")
 
         assert result.startswith("Error creating category:")
+```
 
-    def test_create_category_invalid_classification_returns_error(self):
-        """Should return error immediately for invalid classification without API call."""
-        from sure_mcp_server.server import create_category
+- [ ] **Step 2: Run the tests to verify they fail**
 
-        result = create_category(name="Test", classification="invalid")
+```
+pytest tests/test_tools_category.py::TestCreateCategory -v
+```
 
-        assert result == "Error creating category: classification must be 'income' or 'expense'"
+Expected: `FAILED` — `ImportError` or `AttributeError` because `create_category` doesn't exist yet.
 
+---
 
+### Task 2: Implement create_category
+
+**Files:**
+- Modify: `src/sure_mcp_server/server.py` — insert after line 517 (after `get_category`)
+
+- [ ] **Step 3: Insert the create_category tool into server.py**
+
+In `server.py`, insert the following block **after the closing of `get_category` at line 516, before the `@mcp.tool()` decorator for `sync_accounts` at line 519**. Add a blank line before and after the new block:
+
+```python
+@mcp.tool()
+def create_category(
+    name: str,
+    classification: str,
+    color: Optional[str] = None,
+    icon: Optional[str] = None,
+    parent_id: Optional[str] = None,
+) -> str:
+    """
+    Create a new category in Sure.
+
+    Args:
+        name: Category name
+        classification: "income" or "expense"
+        color: Optional color string (e.g. hex code like "#ff0000")
+        icon: Optional icon identifier
+        parent_id: Optional parent category ID for nesting
+    """
+    try:
+        with get_client() as client:
+            payload: Dict[str, Any] = {
+                "name": name,
+                "classification": classification,
+            }
+
+            if color is not None:
+                payload["color"] = color
+            if icon is not None:
+                payload["icon"] = icon
+            if parent_id is not None:
+                payload["parent_id"] = parent_id
+
+            response = client.post(
+                "/api/v1/categories",
+                json={"category": payload}
+            )
+            data = handle_response(response)
+
+            logger.info(f"✅ Created category '{name}'")
+            return json.dumps(data, indent=2, default=str)
+    except Exception as e:
+        logger.error(f"Failed to create category: {e}")
+        return f"Error creating category: {str(e)}"
+```
+
+- [ ] **Step 4: Run the create_category tests to verify they pass**
+
+```
+pytest tests/test_tools_category.py::TestCreateCategory -v
+```
+
+Expected: All 4 tests `PASSED`.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add tests/test_tools_category.py src/sure_mcp_server/server.py
+git commit -m "feat: add create_category MCP tool"
+```
+
+---
+
+## Chunk 2: update_category (TDD)
+
+### Task 3: Write failing tests for update_category
+
+**Files:**
+- Modify: `tests/test_tools_category.py` — append tests below existing ones
+
+- [ ] **Step 4: Append update_category tests to the test file**
+
+Append to `tests/test_tools_category.py`:
+
+```python
 # ---------------------------------------------------------------------------
 # update_category
 # ---------------------------------------------------------------------------
 
 class TestUpdateCategory:
-    def test_update_category_single_field(self):
+    def test_update_category_single_field(self, monkeypatch):
         """Should PATCH /api/v1/categories/{id} with only the changed field."""
         from sure_mcp_server.server import update_category
 
@@ -137,7 +246,7 @@ class TestUpdateCategory:
         )
         assert json.loads(result) == {"category": expected_data}
 
-    def test_update_category_all_fields(self):
+    def test_update_category_all_fields(self, monkeypatch):
         """Should PATCH with all provided fields."""
         from sure_mcp_server.server import update_category
 
@@ -163,9 +272,8 @@ class TestUpdateCategory:
             "icon": "star",
             "parent_id": "cat-0",
         }
-        assert json.loads(result) == {"category": expected_data}
 
-    def test_update_category_omits_none_fields(self):
+    def test_update_category_omits_none_fields(self, monkeypatch):
         """None optional fields must not appear in the PATCH payload."""
         from sure_mcp_server.server import update_category
 
@@ -180,7 +288,7 @@ class TestUpdateCategory:
         assert "icon" not in payload
         assert "parent_id" not in payload
 
-    def test_update_category_no_optional_fields_sends_empty_payload(self):
+    def test_update_category_no_optional_fields_sends_empty_payload(self, monkeypatch):
         """Calling with only category_id should PATCH with empty category dict."""
         from sure_mcp_server.server import update_category
 
@@ -192,7 +300,7 @@ class TestUpdateCategory:
         payload = mock_client.patch.call_args.kwargs["json"]["category"]
         assert payload == {}
 
-    def test_update_category_api_error_returns_error_string(self):
+    def test_update_category_api_error_returns_error_string(self, monkeypatch):
         """Should return an error string (not raise) on API failure."""
         from sure_mcp_server.server import update_category
 
@@ -204,63 +312,95 @@ class TestUpdateCategory:
             result = update_category(category_id="nonexistent")
 
         assert result.startswith("Error updating category:")
+```
 
-    def test_update_category_invalid_classification_returns_error(self):
-        """Should return error immediately for invalid classification without API call."""
-        from sure_mcp_server.server import update_category
+- [ ] **Step 5: Run the update_category tests to verify they fail**
 
-        result = update_category(category_id="cat-1", classification="bad")
+```
+pytest tests/test_tools_category.py::TestUpdateCategory -v
+```
 
-        assert result == "Error updating category: classification must be 'income' or 'expense'"
+Expected: `FAILED` — `ImportError` or `AttributeError` because `update_category` doesn't exist yet.
 
+---
 
-# ---------------------------------------------------------------------------
-# delete_category
-# ---------------------------------------------------------------------------
+### Task 4: Implement update_category
 
-class TestDeleteCategory:
-    def test_delete_category_calls_correct_endpoint(self):
-        """Should DELETE /api/v1/categories/{id}."""
-        from sure_mcp_server.server import delete_category
+**Files:**
+- Modify: `src/sure_mcp_server/server.py` — insert after `create_category`
 
-        mock_client = make_mock_client(200, {})
+- [ ] **Step 6: Insert the update_category tool into server.py**
 
-        with mock.patch("sure_mcp_server.server.get_client", return_value=mock_client):
-            delete_category(category_id="cat-1")
+In `server.py`, insert the following block immediately after the closing of `create_category`:
 
-        mock_client.delete.assert_called_once_with("/api/v1/categories/cat-1")
+```python
+@mcp.tool()
+def update_category(
+    category_id: str,
+    name: Optional[str] = None,
+    classification: Optional[str] = None,
+    color: Optional[str] = None,
+    icon: Optional[str] = None,
+    parent_id: Optional[str] = None,
+) -> str:
+    """
+    Update an existing category in Sure.
 
-    def test_delete_category_returns_json_on_success(self):
-        """Should return JSON-serialised response on success."""
-        from sure_mcp_server.server import delete_category
+    Args:
+        category_id: The ID of the category to update
+        name: New category name
+        classification: New classification ("income" or "expense")
+        color: New color string (e.g. hex code like "#ff0000")
+        icon: New icon identifier
+        parent_id: New parent category ID for nesting
+    """
+    try:
+        with get_client() as client:
+            payload: Dict[str, Any] = {}
 
-        expected_data = {"id": "cat-1", "deleted": True}
-        mock_client = make_mock_client(200, expected_data)
+            if name is not None:
+                payload["name"] = name
+            if classification is not None:
+                payload["classification"] = classification
+            if color is not None:
+                payload["color"] = color
+            if icon is not None:
+                payload["icon"] = icon
+            if parent_id is not None:
+                payload["parent_id"] = parent_id
 
-        with mock.patch("sure_mcp_server.server.get_client", return_value=mock_client):
-            result = delete_category(category_id="cat-1")
+            response = client.patch(
+                f"/api/v1/categories/{category_id}",
+                json={"category": payload}
+            )
+            data = handle_response(response)
 
-        assert json.loads(result) == expected_data
+            logger.info(f"✅ Updated category {category_id}")
+            return json.dumps(data, indent=2, default=str)
+    except Exception as e:
+        logger.error(f"Failed to update category: {e}")
+        return f"Error updating category: {str(e)}"
+```
 
-    def test_delete_category_api_error_returns_error_string(self):
-        """Should return an error string (not raise) on API failure."""
-        from sure_mcp_server.server import delete_category
+- [ ] **Step 7: Run all category tests to verify they pass**
 
-        mock_client = make_mock_client(404, {})
-        mock_client.delete.return_value.text = "Not Found"
+```
+pytest tests/test_tools_category.py -v
+```
 
-        with mock.patch("sure_mcp_server.server.get_client", return_value=mock_client):
-            result = delete_category(category_id="nonexistent")
+Expected: All 9 tests `PASSED`.
 
-        assert result.startswith("Error deleting category:")
+- [ ] **Step 8: Run the full test suite to check for regressions**
 
-    def test_delete_category_url_uses_provided_id(self):
-        """Should interpolate category_id into the DELETE URL."""
-        from sure_mcp_server.server import delete_category
+```
+pytest tests/ -v
+```
 
-        mock_client = make_mock_client(200, {})
+Expected: All tests `PASSED`.
 
-        with mock.patch("sure_mcp_server.server.get_client", return_value=mock_client):
-            delete_category(category_id="cat-99")
+- [ ] **Step 9: Commit**
 
-        mock_client.delete.assert_called_once_with("/api/v1/categories/cat-99")
+```bash
+git add tests/test_tools_category.py src/sure_mcp_server/server.py
+git commit -m "feat: add update_category MCP tool"
+```
