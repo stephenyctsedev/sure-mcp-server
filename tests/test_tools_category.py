@@ -193,6 +193,44 @@ class TestUpdateCategory:
         payload = mock_client.patch.call_args.kwargs["json"]["category"]
         assert payload == {}
 
+    def test_update_category_empty_sentinel_sends_null_parent_id(self):
+        """Passing parent_id='empty' should send null to the API to unlink the parent."""
+        from sure_mcp_server.server import update_category
+
+        expected_data = {"id": "cat-1", "parent_id": None}
+        mock_client = make_mock_client(200, {"category": expected_data})
+
+        with mock.patch("sure_mcp_server.server.get_client", return_value=mock_client):
+            result = update_category(category_id="cat-1", parent_id="empty")
+
+        payload = mock_client.patch.call_args.kwargs["json"]["category"]
+        assert payload == {"parent_id": None}
+        assert json.loads(result) == {"category": expected_data}
+
+    def test_update_category_regular_parent_id_sent_as_is(self):
+        """A normal parent_id string should be forwarded to the API unchanged."""
+        from sure_mcp_server.server import update_category
+
+        mock_client = make_mock_client(200, {"id": "cat-2"})
+
+        with mock.patch("sure_mcp_server.server.get_client", return_value=mock_client):
+            update_category(category_id="cat-2", parent_id="cat-0")
+
+        payload = mock_client.patch.call_args.kwargs["json"]["category"]
+        assert payload == {"parent_id": "cat-0"}
+
+    def test_update_category_none_parent_id_omitted_from_payload(self):
+        """Omitting parent_id (None) should not include it in the PATCH payload."""
+        from sure_mcp_server.server import update_category
+
+        mock_client = make_mock_client(200, {"id": "cat-1"})
+
+        with mock.patch("sure_mcp_server.server.get_client", return_value=mock_client):
+            update_category(category_id="cat-1", name="No Parent Change")
+
+        payload = mock_client.patch.call_args.kwargs["json"]["category"]
+        assert "parent_id" not in payload
+
     def test_update_category_api_error_returns_error_string(self):
         """Should return an error string (not raise) on API failure."""
         from sure_mcp_server.server import update_category
