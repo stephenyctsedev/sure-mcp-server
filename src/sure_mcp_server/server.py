@@ -585,7 +585,8 @@ def update_category(
         classification: New classification ("income" or "expense")
         color: New color string (e.g. hex code like "#ff0000")
         icon: New icon identifier
-        parent_id: New parent category ID for nesting
+        parent_id: New parent category ID for nesting. Pass the special value
+            "empty" to unlink the category from its current parent.
     """
     try:
         if classification is not None and classification not in ("income", "expense"):
@@ -603,7 +604,7 @@ def update_category(
             if icon is not None:
                 payload["icon"] = icon
             if parent_id is not None:
-                payload["parent_id"] = parent_id
+                payload["parent_id"] = None if parent_id == "empty" else parent_id
 
             response = client.patch(
                 f"/api/v1/categories/{category_id}",
