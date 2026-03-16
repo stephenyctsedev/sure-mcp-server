@@ -260,6 +260,118 @@ def get_accounts() -> str:
 
 
 @mcp.tool()
+def get_account(account_id: str) -> str:
+    """
+    Get a single financial account by ID.
+
+    Args:
+        account_id: The ID of the account
+    """
+    try:
+        with get_client() as client:
+            response = client.get(f"/api/v1/accounts/{account_id}")
+            data = handle_response(response)
+
+            return json.dumps(data, indent=2, default=str)
+    except Exception as e:
+        logger.error(f"Failed to get account: {e}")
+        return f"Error getting account: {str(e)}"
+
+
+@mcp.tool()
+def create_account(
+    name: str,
+    account_type: str,
+    balance: Optional[float] = None,
+    currency: Optional[str] = None,
+    institution_name: Optional[str] = None,
+) -> str:
+    """
+    Create a new financial account in Sure.
+
+    Args:
+        name: Account name
+        account_type: Type of account (e.g. "checking", "savings", "credit", "investment", "loan")
+        balance: Optional initial balance
+        currency: Optional currency code (e.g. "USD")
+        institution_name: Optional name of the financial institution
+    """
+    try:
+        with get_client() as client:
+            payload: Dict[str, Any] = {
+                "name": name,
+                "account_type": account_type,
+            }
+
+            if balance is not None:
+                payload["balance"] = balance
+            if currency is not None:
+                payload["currency"] = currency
+            if institution_name is not None:
+                payload["institution_name"] = institution_name
+
+            response = client.post(
+                "/api/v1/accounts",
+                json={"account": payload}
+            )
+            data = handle_response(response)
+
+            logger.info(f"✅ Created account '{name}'")
+            return json.dumps(data, indent=2, default=str)
+    except Exception as e:
+        logger.error(f"Failed to create account: {e}")
+        return f"Error creating account: {str(e)}"
+
+
+@mcp.tool()
+def update_account(
+    account_id: str,
+    name: Optional[str] = None,
+    account_type: Optional[str] = None,
+    balance: Optional[float] = None,
+    currency: Optional[str] = None,
+    institution_name: Optional[str] = None,
+) -> str:
+    """
+    Update an existing financial account in Sure.
+
+    Args:
+        account_id: The ID of the account to update
+        name: New account name
+        account_type: New account type (e.g. "checking", "savings", "credit", "investment", "loan")
+        balance: New balance
+        currency: New currency code (e.g. "USD")
+        institution_name: New financial institution name
+    """
+    try:
+        with get_client() as client:
+            payload: Dict[str, Any] = {}
+
+            if name is not None:
+                payload["name"] = name
+            if account_type is not None:
+                payload["account_type"] = account_type
+            if balance is not None:
+                payload["balance"] = balance
+            if currency is not None:
+                payload["currency"] = currency
+            if institution_name is not None:
+                payload["institution_name"] = institution_name
+
+            response = client.patch(
+                f"/api/v1/accounts/{account_id}",
+                json={"account": payload}
+            )
+            data = handle_response(response)
+
+            logger.info(f"✅ Updated account {account_id}")
+            return json.dumps(data, indent=2, default=str)
+    except Exception as e:
+        logger.error(f"Failed to update account: {e}")
+        return f"Error updating account: {str(e)}"
+
+
+@mcp.tool()
 def get_transactions(
     limit: int = 25,
     start_date: Optional[str] = None,
