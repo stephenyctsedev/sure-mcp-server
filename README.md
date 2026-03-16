@@ -129,6 +129,8 @@ Once configured, use these tools directly in Claude Desktop:
 - `get_transactions` - Recent transactions
 - `get_categories` - Transaction categories
 - `sync_accounts` - Trigger account sync
+- `link_transfer` - Link two transactions as a transfer
+- `get_category_icons` - Browse available category icons
 
 ## Available Tools
 
@@ -143,10 +145,13 @@ Once configured, use these tools directly in Claude Desktop:
 | `create_transaction` | Create new transaction | `account_id`, `amount`, `name`, `date`, `category_id`, `notes`, `nature` |
 | `update_transaction` | Update transaction | `transaction_id`, `amount`, `name`, `date`, `category_id`, `notes` |
 | `delete_transaction` | Delete transaction | `transaction_id` |
+| `link_transfer` | Link two transactions as a transfer | `transaction_id`, `other_transaction_id` |
 | `get_categories` | Get all categories | None |
 | `get_category` | Get single category | `category_id` |
 | `create_category` | Create new category | `name`, `classification`, `color`, `icon`, `parent_id` |
 | `update_category` | Update existing category | `category_id`, `name`, `classification`, `color`, `icon`, `parent_id` |
+| `delete_category` | Delete category | `category_id` |
+| `get_category_icons` | Get available category icons | None |
 | `sync_accounts` | Trigger account sync | None |
 | `get_usage` | Get API usage info | None |
 | `list_chats` | List AI chat sessions | None |
