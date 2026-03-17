@@ -126,20 +126,41 @@ def get_client() -> httpx.Client:
 
 def handle_response(response: httpx.Response) -> Any:
     """Handle API response and raise appropriate errors."""
-    if response.status_code == 401:
-        raise RuntimeError("❌ Authentication failed. Check your API key.")
-    elif response.status_code == 403:
-        raise RuntimeError("❌ Permission denied. Check API key scopes.")
-    elif response.status_code == 404:
-        raise RuntimeError("❌ Resource not found.")
-    elif response.status_code == 429:
-        raise RuntimeError("❌ Rate limited. Please wait and try again.")
-    elif response.status_code >= 400:
-        raise RuntimeError(f"❌ API error {response.status_code}: {response.text}")
+    if response.status_code >= 400:
+        try:
+            error_data = response.json()
+            error_msg = error_data.get("message") or error_data.get("error") or response.text
+        except Exception:
+            error_msg = response.text
+
+        if response.status_code == 401:
+            raise RuntimeError(f"❌ HTTP 401: Authentication failed. Check your API key. {error_msg}")
+        elif response.status_code == 403:
+            raise RuntimeError(f"❌ HTTP 403: Permission denied. Check API key scopes. {error_msg}")
+        elif response.status_code == 404:
+            raise RuntimeError(f"❌ HTTP 404: Resource not found. {error_msg}")
+        elif response.status_code == 422:
+            raise RuntimeError(f"❌ HTTP 422: Validation failed. {error_msg}")
+        elif response.status_code == 429:
+            raise RuntimeError(f"❌ HTTP 429: Rate limited. Please wait and try again. {error_msg}")
+        else:
+            raise RuntimeError(f"❌ HTTP {response.status_code}: {error_msg}")
 
     if response.headers.get("content-type", "").startswith("application/json"):
         return response.json()
     return response.text
+
+
+def check_rate_limit(response: httpx.Response) -> str:
+    """Return a warning string if X-RateLimit-Remaining is low (< 10), else empty string."""
+    remaining = response.headers.get("X-RateLimit-Remaining")
+    if remaining is not None:
+        try:
+            if int(remaining) < 10:
+                return f"\n\n⚠️ Rate limit warning: only {remaining} API requests remaining. Please reduce request frequency."
+        except ValueError:
+            pass
+    return ""
 
 
 @mcp.tool()
@@ -240,11 +261,27 @@ def check_connection() -> str:
 
 
 @mcp.tool()
-def get_accounts() -> str:
-    """Get all financial accounts from Sure."""
+def list_accounts(
+    page: Optional[int] = None,
+    per_page: Optional[int] = None,
+) -> str:
+    """
+    List all financial accounts from Sure with optional pagination.
+
+    Args:
+        page: Page number (1-based)
+        per_page: Number of accounts per page
+    """
     try:
         with get_client() as client:
-            response = client.get("/api/v1/accounts")
+            params: Dict[str, Any] = {}
+            if page is not None:
+                params["page"] = page
+            if per_page is not None:
+                params["per_page"] = per_page
+
+            response = client.get("/api/v1/accounts", params=params)
+            rate_limit_note = check_rate_limit(response)
             data = handle_response(response)
 
             # Handle paginated response
@@ -253,16 +290,16 @@ def get_accounts() -> str:
                 accounts = accounts.get("accounts", [])
 
             logger.info(f"✅ Retrieved {len(accounts) if isinstance(accounts, list) else 'unknown'} accounts")
-            return json.dumps(accounts, indent=2, default=str)
+            return json.dumps(accounts, indent=2, default=str) + rate_limit_note
     except Exception as e:
-        logger.error(f"Failed to get accounts: {e}")
-        return f"Error getting accounts: {str(e)}"
+        logger.error(f"Failed to list accounts: {e}")
+        return f"Error listing accounts: {str(e)}"
 
 
 @mcp.tool()
 def get_account(account_id: str) -> str:
     """
-    Get a single financial account by ID.
+    Retrieve a single account by ID.
 
     Args:
         account_id: The ID of the account
@@ -270,37 +307,60 @@ def get_account(account_id: str) -> str:
     try:
         with get_client() as client:
             response = client.get(f"/api/v1/accounts/{account_id}")
+            rate_limit_note = check_rate_limit(response)
             data = handle_response(response)
 
-            return json.dumps(data, indent=2, default=str)
+            return json.dumps(data, indent=2, default=str) + rate_limit_note
     except Exception as e:
         logger.error(f"Failed to get account: {e}")
         return f"Error getting account: {str(e)}"
 
 
+_ACCOUNTABLE_TYPES = (
+    "Depository", "Investment", "Crypto", "Property",
+    "Vehicle", "OtherAsset", "CreditCard", "Loan", "OtherLiability",
+)
+
+
 @mcp.tool()
 def create_account(
     name: str,
-    account_type: str,
+    accountable_type: str,
     balance: Optional[float] = None,
     currency: Optional[str] = None,
     institution_name: Optional[str] = None,
+    notes: Optional[str] = None,
+    opening_balance_date: Optional[str] = None,
 ) -> str:
     """
-    Create a new financial account in Sure.
+    Create a new manual account in Sure.
 
     Args:
-        name: Account name
-        account_type: Type of account (e.g. "checking", "savings", "credit", "investment", "loan")
-        balance: Optional initial balance
-        currency: Optional currency code (e.g. "USD")
-        institution_name: Optional name of the financial institution
+        name: Account name, e.g. 'My Savings'
+        accountable_type: Account type (PascalCase). Must be one of: Depository
+            (checking/savings), Investment (brokerage/retirement), Crypto (crypto
+            wallet), Property (real estate), Vehicle (car/boat), OtherAsset (any
+            other asset), CreditCard (credit card), Loan (mortgage/personal loan),
+            OtherLiability (any other liability).
+        balance: Opening balance (default: 0)
+        currency: ISO 4217 currency code, e.g. 'USD', 'CAD'
+        institution_name: Bank or institution name
+        notes: Free-text notes
+        opening_balance_date: ISO 8601 date for the opening balance entry, e.g.
+            '2024-01-01'. Defaults to 2 years ago.
     """
     try:
+        if accountable_type not in _ACCOUNTABLE_TYPES:
+            return (
+                f"Error creating account: accountable_type must be one of "
+                f"{_ACCOUNTABLE_TYPES}. Got '{accountable_type}'. "
+                "Note: values are PascalCase (e.g. 'Depository', not 'depository')."
+            )
+
         with get_client() as client:
             payload: Dict[str, Any] = {
                 "name": name,
-                "account_type": account_type,
+                "accountable_type": accountable_type,
             }
 
             if balance is not None:
@@ -309,15 +369,20 @@ def create_account(
                 payload["currency"] = currency
             if institution_name is not None:
                 payload["institution_name"] = institution_name
+            if notes is not None:
+                payload["notes"] = notes
+            if opening_balance_date is not None:
+                payload["opening_balance_date"] = opening_balance_date
 
             response = client.post(
                 "/api/v1/accounts",
                 json={"account": payload}
             )
+            rate_limit_note = check_rate_limit(response)
             data = handle_response(response)
 
             logger.info(f"✅ Created account '{name}'")
-            return json.dumps(data, indent=2, default=str)
+            return json.dumps(data, indent=2, default=str) + rate_limit_note
     except Exception as e:
         logger.error(f"Failed to create account: {e}")
         return f"Error creating account: {str(e)}"
@@ -327,21 +392,24 @@ def create_account(
 def update_account(
     account_id: str,
     name: Optional[str] = None,
-    account_type: Optional[str] = None,
     balance: Optional[float] = None,
-    currency: Optional[str] = None,
     institution_name: Optional[str] = None,
+    notes: Optional[str] = None,
 ) -> str:
     """
-    Update an existing financial account in Sure.
+    Update an existing account's name, balance, institution name, or notes.
+    Only include fields you want to change — omitted fields are left as-is.
+
+    Note: accountable_type cannot be changed after creation — omit it.
+    Changing balance creates a balance-adjustment entry to reconcile the difference;
+    only send balance if you intend to update it.
 
     Args:
-        account_id: The ID of the account to update
+        account_id: Account UUID
         name: New account name
-        account_type: New account type (e.g. "checking", "savings", "credit", "investment", "loan")
-        balance: New balance
-        currency: New currency code (e.g. "USD")
-        institution_name: New financial institution name
+        balance: New current balance (creates a balance adjustment entry)
+        institution_name: Bank or institution name
+        notes: Free-text notes
     """
     try:
         with get_client() as client:
@@ -349,30 +417,29 @@ def update_account(
 
             if name is not None:
                 payload["name"] = name
-            if account_type is not None:
-                payload["account_type"] = account_type
             if balance is not None:
                 payload["balance"] = balance
-            if currency is not None:
-                payload["currency"] = currency
             if institution_name is not None:
                 payload["institution_name"] = institution_name
+            if notes is not None:
+                payload["notes"] = notes
 
             response = client.patch(
                 f"/api/v1/accounts/{account_id}",
                 json={"account": payload}
             )
+            rate_limit_note = check_rate_limit(response)
             data = handle_response(response)
 
             logger.info(f"✅ Updated account {account_id}")
-            return json.dumps(data, indent=2, default=str)
+            return json.dumps(data, indent=2, default=str) + rate_limit_note
     except Exception as e:
         logger.error(f"Failed to update account: {e}")
         return f"Error updating account: {str(e)}"
 
 
 @mcp.tool()
-def get_transactions(
+def list_transactions(
     limit: int = 25,
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
@@ -381,7 +448,7 @@ def get_transactions(
     search: Optional[str] = None,
 ) -> str:
     """
-    Get transactions from Sure.
+    List transactions from Sure with filtering and pagination.
 
     Args:
         limit: Number of transactions per page (default: 25, max: 100)
@@ -407,6 +474,7 @@ def get_transactions(
                 params["search"] = search
 
             response = client.get("/api/v1/transactions", params=params)
+            rate_limit_note = check_rate_limit(response)
             data = handle_response(response)
 
             # Handle paginated response
@@ -415,16 +483,16 @@ def get_transactions(
                 transactions = transactions.get("transactions", [])
 
             logger.info(f"✅ Retrieved {len(transactions) if isinstance(transactions, list) else 'unknown'} transactions")
-            return json.dumps(transactions, indent=2, default=str)
+            return json.dumps(transactions, indent=2, default=str) + rate_limit_note
     except Exception as e:
-        logger.error(f"Failed to get transactions: {e}")
-        return f"Error getting transactions: {str(e)}"
+        logger.error(f"Failed to list transactions: {e}")
+        return f"Error listing transactions: {str(e)}"
 
 
 @mcp.tool()
 def get_transaction(transaction_id: str) -> str:
     """
-    Get a single transaction by ID.
+    Retrieve a single transaction by ID.
 
     Args:
         transaction_id: The ID of the transaction
@@ -432,9 +500,10 @@ def get_transaction(transaction_id: str) -> str:
     try:
         with get_client() as client:
             response = client.get(f"/api/v1/transactions/{transaction_id}")
+            rate_limit_note = check_rate_limit(response)
             data = handle_response(response)
 
-            return json.dumps(data, indent=2, default=str)
+            return json.dumps(data, indent=2, default=str) + rate_limit_note
     except Exception as e:
         logger.error(f"Failed to get transaction: {e}")
         return f"Error getting transaction: {str(e)}"
@@ -482,10 +551,11 @@ def create_transaction(
                 "/api/v1/transactions",
                 json={"transaction": payload}
             )
+            rate_limit_note = check_rate_limit(response)
             data = handle_response(response)
 
             logger.info(f"✅ Created transaction")
-            return json.dumps(data, indent=2, default=str)
+            return json.dumps(data, indent=2, default=str) + rate_limit_note
     except Exception as e:
         logger.error(f"Failed to create transaction: {e}")
         return f"Error creating transaction: {str(e)}"
@@ -530,10 +600,11 @@ def update_transaction(
                 f"/api/v1/transactions/{transaction_id}",
                 json={"transaction": payload}
             )
+            rate_limit_note = check_rate_limit(response)
             data = handle_response(response)
 
             logger.info(f"✅ Updated transaction {transaction_id}")
-            return json.dumps(data, indent=2, default=str)
+            return json.dumps(data, indent=2, default=str) + rate_limit_note
     except Exception as e:
         logger.error(f"Failed to update transaction: {e}")
         return f"Error updating transaction: {str(e)}"
@@ -550,10 +621,11 @@ def delete_transaction(transaction_id: str) -> str:
     try:
         with get_client() as client:
             response = client.delete(f"/api/v1/transactions/{transaction_id}")
+            rate_limit_note = check_rate_limit(response)
             data = handle_response(response)
 
             logger.info(f"✅ Deleted transaction {transaction_id}")
-            return json.dumps(data, indent=2, default=str)
+            return json.dumps(data, indent=2, default=str) + rate_limit_note
     except Exception as e:
         logger.error(f"Failed to delete transaction: {e}")
         return f"Error deleting transaction: {str(e)}"
@@ -583,21 +655,23 @@ def link_transfer(transaction_id: str, other_transaction_id: str) -> str:
                 f"/api/v1/transactions/{transaction_id}/transfer",
                 json={"transfer": {"other_transaction_id": other_transaction_id}}
             )
+            rate_limit_note = check_rate_limit(response)
             data = handle_response(response)
 
             logger.info(f"✅ Linked transfer between {transaction_id} and {other_transaction_id}")
-            return json.dumps(data, indent=2, default=str)
+            return json.dumps(data, indent=2, default=str) + rate_limit_note
     except Exception as e:
         logger.error(f"Failed to link transfer: {e}")
         return f"Error linking transfer: {str(e)}"
 
 
 @mcp.tool()
-def get_categories() -> str:
-    """Get all transaction categories from Sure."""
+def list_categories() -> str:
+    """List all spending categories from Sure."""
     try:
         with get_client() as client:
             response = client.get("/api/v1/categories")
+            rate_limit_note = check_rate_limit(response)
             data = handle_response(response)
 
             # Handle paginated response
@@ -606,16 +680,16 @@ def get_categories() -> str:
                 categories = categories.get("categories", [])
 
             logger.info(f"✅ Retrieved {len(categories) if isinstance(categories, list) else 'unknown'} categories")
-            return json.dumps(categories, indent=2, default=str)
+            return json.dumps(categories, indent=2, default=str) + rate_limit_note
     except Exception as e:
-        logger.error(f"Failed to get categories: {e}")
-        return f"Error getting categories: {str(e)}"
+        logger.error(f"Failed to list categories: {e}")
+        return f"Error listing categories: {str(e)}"
 
 
 @mcp.tool()
 def get_category(category_id: str) -> str:
     """
-    Get a single category by ID.
+    Retrieve a single category by ID.
 
     Args:
         category_id: The ID of the category
@@ -623,9 +697,10 @@ def get_category(category_id: str) -> str:
     try:
         with get_client() as client:
             response = client.get(f"/api/v1/categories/{category_id}")
+            rate_limit_note = check_rate_limit(response)
             data = handle_response(response)
 
-            return json.dumps(data, indent=2, default=str)
+            return json.dumps(data, indent=2, default=str) + rate_limit_note
     except Exception as e:
         logger.error(f"Failed to get category: {e}")
         return f"Error getting category: {str(e)}"
@@ -670,10 +745,11 @@ def create_category(
                 "/api/v1/categories",
                 json={"category": payload}
             )
+            rate_limit_note = check_rate_limit(response)
             data = handle_response(response)
 
             logger.info(f"✅ Created category '{name}'")
-            return json.dumps(data, indent=2, default=str)
+            return json.dumps(data, indent=2, default=str) + rate_limit_note
     except Exception as e:
         logger.error(f"Failed to create category: {e}")
         return f"Error creating category: {str(e)}"
@@ -722,10 +798,11 @@ def update_category(
                 f"/api/v1/categories/{category_id}",
                 json={"category": payload}
             )
+            rate_limit_note = check_rate_limit(response)
             data = handle_response(response)
 
             logger.info(f"✅ Updated category {category_id}")
-            return json.dumps(data, indent=2, default=str)
+            return json.dumps(data, indent=2, default=str) + rate_limit_note
     except Exception as e:
         logger.error(f"Failed to update category: {e}")
         return f"Error updating category: {str(e)}"
@@ -742,10 +819,11 @@ def delete_category(category_id: str) -> str:
     try:
         with get_client() as client:
             response = client.delete(f"/api/v1/categories/{category_id}")
+            rate_limit_note = check_rate_limit(response)
             data = handle_response(response)
 
             logger.info(f"✅ Deleted category {category_id}")
-            return json.dumps(data, indent=2, default=str)
+            return json.dumps(data, indent=2, default=str) + rate_limit_note
     except Exception as e:
         logger.error(f"Failed to delete category: {e}")
         return f"Error deleting category: {str(e)}"
@@ -757,6 +835,7 @@ def get_category_icons() -> str:
     try:
         with get_client() as client:
             response = client.get("/api/v1/categories/icons")
+            rate_limit_note = check_rate_limit(response)
             data = handle_response(response)
 
             if isinstance(data, list):
@@ -767,7 +846,7 @@ def get_category_icons() -> str:
                     icons = icons.get("icons", [])
 
             logger.info(f"✅ Retrieved {len(icons) if isinstance(icons, list) else 'unknown'} icons")
-            return json.dumps(icons, indent=2, default=str)
+            return json.dumps(icons, indent=2, default=str) + rate_limit_note
     except Exception as e:
         logger.error(f"Failed to get category icons: {e}")
         return f"Error getting category icons: {str(e)}"
