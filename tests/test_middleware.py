@@ -47,11 +47,11 @@ def test_env_var_fallback(tmp_path, monkeypatch):
     assert captured["key"] == "env-key"
 
 
-def test_no_auth_returns_403(tmp_path, monkeypatch):
+def test_no_auth_returns_401(tmp_path, monkeypatch):
     monkeypatch.delenv("SURE_API_KEY", raising=False)
     client, db, captured = make_test_app(tmp_path)
     response = client.get("/test")
-    assert response.status_code == 403
+    assert response.status_code == 401
 
 
 def test_oauth_paths_bypass_auth(tmp_path, monkeypatch):
