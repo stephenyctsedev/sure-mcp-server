@@ -125,9 +125,9 @@ Run the server locally via Docker stdio mode. Your API key stays in your Claude 
 ### Start Using in Claude Desktop
 
 Once configured, use these tools directly in Claude Desktop:
-- `get_accounts` - View all accounts
-- `get_transactions` - Recent transactions
-- `get_categories` - Transaction categories
+- `list_accounts` - View all accounts
+- `list_transactions` - Recent transactions
+- `list_categories` - Transaction categories
 - `sync_accounts` - Trigger account sync
 - `link_transfer` - Link two transactions as a transfer
 - `get_category_icons` - Browse available category icons
@@ -139,14 +139,17 @@ Once configured, use these tools directly in Claude Desktop:
 | `setup_authentication` | Get setup instructions | None |
 | `check_auth_status` | Check authentication status | None |
 | `check_connection` | Test API connection | None |
-| `get_accounts` | Get all financial accounts | None |
-| `get_transactions` | Get transactions with filtering | `limit`, `start_date`, `end_date`, `account_ids`, `category_ids`, `search` |
+| `list_accounts` | List all financial accounts | `page`, `per_page` |
+| `get_account` | Get single account | `account_id` |
+| `create_account` | Create a new manual account | `name`, `accountable_type`, `balance`, `currency`, `institution_name`, `notes`, `opening_balance_date` |
+| `update_account` | Update account name, balance, or notes | `account_id`, `name`, `balance`, `institution_name`, `notes` |
+| `list_transactions` | List transactions with filtering | `limit`, `start_date`, `end_date`, `account_ids`, `category_ids`, `search` |
 | `get_transaction` | Get single transaction | `transaction_id` |
 | `create_transaction` | Create new transaction | `account_id`, `amount`, `name`, `date`, `category_id`, `notes`, `nature` |
 | `update_transaction` | Update transaction | `transaction_id`, `amount`, `name`, `date`, `category_id`, `notes` |
 | `delete_transaction` | Delete transaction | `transaction_id` |
 | `link_transfer` | Link two transactions as a transfer | `transaction_id`, `other_transaction_id` |
-| `get_categories` | Get all categories | None |
+| `list_categories` | List all categories | None |
 | `get_category` | Get single category | `category_id` |
 | `create_category` | Create new category | `name`, `classification`, `color`, `icon`, `parent_id` |
 | `update_category` | Update existing category | `category_id`, `name`, `classification`, `color`, `icon`, `parent_id` |
@@ -217,10 +220,15 @@ sure-mcp-server/
 ├── tests/
 │   ├── test_auth_db.py
 │   ├── test_middleware.py
-│   └── test_oauth_routes.py
-├── docs/plans/           # Design docs and implementation plans
+│   ├── test_oauth_routes.py
+│   ├── test_tools_account.py
+│   └── test_tools_category.py
+├── docs/
+│   ├── plans/            # OAuth and auth design docs
+│   └── superpowers/      # Category feature specs and plans
 ├── pyproject.toml
 ├── docker-compose.yml
+├── Dockerfile
 └── README.md
 ```
 
