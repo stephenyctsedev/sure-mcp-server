@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 load_dotenv()
 
 # Initialize FastMCP server
-mcp = FastMCP("Sure MCP Server")
+mcp = FastMCP("Sure app")
 
 # Per-request API key (set by AuthMiddleware from OAuth Bearer token or X-Sure-Api-Key header)
 _api_key_var: ContextVar[str | None] = ContextVar("api_key", default=None)
