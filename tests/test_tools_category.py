@@ -23,6 +23,71 @@ def make_mock_client(status_code: int, json_body: dict) -> mock.MagicMock:
 
 
 # ---------------------------------------------------------------------------
+# list_categories
+# ---------------------------------------------------------------------------
+
+class TestListCategories:
+    def test_list_categories_no_pagination(self):
+        """Should GET /api/v1/categories with no query params by default."""
+        from sure_mcp_server.server import list_categories
+
+        categories = [{"id": "cat-1", "name": "Groceries"}]
+        mock_client = make_mock_client(200, {"categories": categories})
+
+        with mock.patch("sure_mcp_server.server.get_client", return_value=mock_client):
+            result = list_categories()
+
+        mock_client.get.assert_called_once_with("/api/v1/categories", params={})
+        assert json.loads(result) == categories
+
+    def test_list_categories_with_page(self):
+        """Should pass page as a query param when provided."""
+        from sure_mcp_server.server import list_categories
+
+        mock_client = make_mock_client(200, {"categories": []})
+
+        with mock.patch("sure_mcp_server.server.get_client", return_value=mock_client):
+            list_categories(page=2)
+
+        mock_client.get.assert_called_once_with("/api/v1/categories", params={"page": 2})
+
+    def test_list_categories_with_per_page(self):
+        """Should pass per_page as a query param when provided."""
+        from sure_mcp_server.server import list_categories
+
+        mock_client = make_mock_client(200, {"categories": []})
+
+        with mock.patch("sure_mcp_server.server.get_client", return_value=mock_client):
+            list_categories(per_page=10)
+
+        mock_client.get.assert_called_once_with("/api/v1/categories", params={"per_page": 10})
+
+    def test_list_categories_with_page_and_per_page(self):
+        """Should pass both page and per_page when both are provided."""
+        from sure_mcp_server.server import list_categories
+
+        mock_client = make_mock_client(200, {"categories": []})
+
+        with mock.patch("sure_mcp_server.server.get_client", return_value=mock_client):
+            list_categories(page=3, per_page=20)
+
+        mock_client.get.assert_called_once_with("/api/v1/categories", params={"page": 3, "per_page": 20})
+
+    def test_list_categories_api_error_returns_error_string(self):
+        """Should return an error string (not raise) on API failure."""
+        from sure_mcp_server.server import list_categories
+
+        mock_client = make_mock_client(500, {})
+        mock_client.get.return_value.status_code = 500
+        mock_client.get.return_value.text = "Internal Server Error"
+
+        with mock.patch("sure_mcp_server.server.get_client", return_value=mock_client):
+            result = list_categories()
+
+        assert result.startswith("Error listing categories:")
+
+
+# ---------------------------------------------------------------------------
 # create_category
 # ---------------------------------------------------------------------------
 
