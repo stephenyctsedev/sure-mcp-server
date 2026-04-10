@@ -666,11 +666,26 @@ def link_transfer(transaction_id: str, other_transaction_id: str) -> str:
 
 
 @mcp.tool()
-def list_categories() -> str:
-    """List all spending categories from Sure."""
+def list_categories(
+    page: Optional[int] = None,
+    per_page: Optional[int] = None,
+) -> str:
+    """
+    List all spending categories from Sure with optional pagination.
+
+    Args:
+        page: Page number (1-based)
+        per_page: Number of categories per page
+    """
     try:
         with get_client() as client:
-            response = client.get("/api/v1/categories")
+            params: Dict[str, Any] = {}
+            if page is not None:
+                params["page"] = page
+            if per_page is not None:
+                params["per_page"] = per_page
+
+            response = client.get("/api/v1/categories", params=params)
             rate_limit_note = check_rate_limit(response)
             data = handle_response(response)
 
